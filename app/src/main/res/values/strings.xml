@@ -1,0 +1,7 @@
+<resources>
+    <string name="app_name">FocusGuard</string>
+    <string name="role_student_name">StudyShield</string>
+    <string name="role_teacher_name">TeacherFocus</string>
+    <string name="sign_in_google">Sign in with Google</string>
+    <string name="system_limits_title">System Limits &amp; Security</string>
+</resources>

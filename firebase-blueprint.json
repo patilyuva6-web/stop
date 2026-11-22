@@ -1,0 +1,123 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Authenticated FocusGuard user role profile (student or teacher) bound to Google Auth UID.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "description": "Firebase Auth UID of the user." },
+        "role": { "type": "string", "enum": ["student", "teacher"], "description": "Active workspace role." },
+        "displayName": { "type": "string", "description": "User full name." },
+        "usn": { "type": "string", "description": "University Seat Number for student accounts." },
+        "teacherId": { "type": "string", "description": "Faculty ID (e.g. T001) for teacher accounts." },
+        "division": { "type": "string", "description": "Academic division A-F." },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Server timestamp of profile creation." },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "Server timestamp of last profile update." }
+      },
+      "required": ["userId", "role", "displayName", "usn", "teacherId", "division", "createdAt", "updatedAt"]
+    },
+    "StudentRecord": {
+      "title": "StudentRecord",
+      "description": "Student record keyed by USN tracking last login and live Class Mode state.",
+      "type": "object",
+      "properties": {
+        "usn": { "type": "string", "description": "Unique student USN." },
+        "ownerUid": { "type": "string", "description": "Student Firebase Auth UID." },
+        "name": { "type": "string", "description": "Student display name." },
+        "division": { "type": "string", "enum": ["A", "B", "C", "D", "E", "F"], "description": "Class division." },
+        "inClassMode": { "type": "boolean", "description": "Whether student is currently in Class Mode." },
+        "activeClassId": { "type": "string", "description": "Currently active class document ID." },
+        "activeSubject": { "type": "string", "description": "Currently active lecture subject." },
+        "breakUntilEpochMs": { "type": "integer", "description": "Epoch milliseconds until approved break expires." },
+        "watcherUids": { "type": "array", "description": "Authorized UIDs (student owner + division teachers) permitted to view status." },
+        "lastLogin": { "type": "string", "format": "date-time", "description": "Server timestamp of student login." },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Server timestamp of record creation." },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "Server timestamp of last update." }
+      },
+      "required": ["usn", "ownerUid", "name", "division", "inClassMode", "activeClassId", "activeSubject", "breakUntilEpochMs", "watcherUids", "lastLogin", "createdAt", "updatedAt"]
+    },
+    "ClassSchedule": {
+      "title": "ClassSchedule",
+      "description": "Timetable lecture slot managed by a teacher for a division.",
+      "type": "object",
+      "properties": {
+        "teacherUid": { "type": "string", "description": "Teacher Firebase Auth UID." },
+        "teacherId": { "type": "string", "description": "Teacher code (e.g. T001)." },
+        "teacherName": { "type": "string", "description": "Teacher display name." },
+        "subject": { "type": "string", "description": "Course or lecture title." },
+        "division": { "type": "string", "enum": ["A", "B", "C", "D", "E", "F"], "description": "Class division A-F." },
+        "day": { "type": "string", "enum": ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"], "description": "Day of week." },
+        "start": { "type": "string", "description": "24h start time HH:mm." },
+        "end": { "type": "string", "description": "24h end time HH:mm." },
+        "room": { "type": "string", "description": "Optional lecture room." },
+        "active": { "type": "boolean", "description": "Whether schedule slot is active." },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Server timestamp of creation." },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "Server timestamp of update." }
+      },
+      "required": ["teacherUid", "teacherId", "teacherName", "subject", "division", "day", "start", "end", "room", "active", "createdAt", "updatedAt"]
+    },
+    "ClassActivity": {
+      "title": "ClassActivity",
+      "description": "Live Class Mode telemetry written by student app during a lecture.",
+      "type": "object",
+      "properties": {
+        "dateKey": { "type": "string", "description": "Date key yyyyMMdd." },
+        "classId": { "type": "string", "description": "Class schedule document ID." },
+        "usn": { "type": "string", "description": "Student USN." },
+        "studentName": { "type": "string", "description": "Student name." },
+        "division": { "type": "string", "enum": ["A", "B", "C", "D", "E", "F"], "description": "Division." },
+        "subject": { "type": "string", "description": "Subject name." },
+        "ownerUid": { "type": "string", "description": "Student Firebase Auth UID." },
+        "teacherUid": { "type": "string", "description": "Class teacher Firebase Auth UID." },
+        "active": { "type": "boolean", "description": "True when student is actively locked in Class Mode." },
+        "breakActive": { "type": "boolean", "description": "True when student is on a 10-minute approved break." },
+        "startedAt": { "type": "string", "format": "date-time", "description": "Server timestamp of Class Mode start." },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "Server timestamp of last heartbeat." }
+      },
+      "required": ["dateKey", "classId", "usn", "studentName", "division", "subject", "ownerUid", "teacherUid", "active", "breakActive", "startedAt", "updatedAt"]
+    },
+    "BreakRequest": {
+      "title": "BreakRequest",
+      "description": "Student 10-minute break request reviewed by the class teacher.",
+      "type": "object",
+      "properties": {
+        "ownerUid": { "type": "string", "description": "Student Firebase Auth UID." },
+        "usn": { "type": "string", "description": "Student USN." },
+        "studentName": { "type": "string", "description": "Student name." },
+        "division": { "type": "string", "enum": ["A", "B", "C", "D", "E", "F"], "description": "Division." },
+        "classId": { "type": "string", "description": "Active class ID." },
+        "subject": { "type": "string", "description": "Active subject." },
+        "teacherUid": { "type": "string", "description": "Class teacher UID." },
+        "reason": { "type": "string", "description": "Student break reason." },
+        "status": { "type": "string", "enum": ["PENDING", "APPROVED", "DENIED"], "description": "Approval state." },
+        "breakCode": { "type": "string", "description": "4-digit break code issued on approval." },
+        "durationMinutes": { "type": "integer", "description": "Break length in minutes (default 10)." },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Server timestamp of creation." },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "Server timestamp of review." }
+      },
+      "required": ["ownerUid", "usn", "studentName", "division", "classId", "subject", "teacherUid", "reason", "status", "breakCode", "durationMinutes", "createdAt", "updatedAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/UserProfile" },
+      "description": "Authenticated user role profile."
+    },
+    "/students/{usn}": {
+      "schema": { "$ref": "#/entities/StudentRecord" },
+      "description": "Student records keyed by USN with lastLogin and live Class Mode state."
+    },
+    "/classes/{classId}": {
+      "schema": { "$ref": "#/entities/ClassSchedule" },
+      "description": "Teacher timetable classes for automatic Class Mode."
+    },
+    "/activity/{activityId}": {
+      "schema": { "$ref": "#/entities/ClassActivity" },
+      "description": "Daily live Class Mode activity records keyed by yyyyMMdd_classId_usn."
+    },
+    "/breakRequests/{requestId}": {
+      "schema": { "$ref": "#/entities/BreakRequest" },
+      "description": "Student break requests monitored and approved/denied by teachers."
+    }
+  }
+}

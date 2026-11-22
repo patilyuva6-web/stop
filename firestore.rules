@@ -1,0 +1,254 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Default deny catch-all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Global Helpers
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function isValidDivision(div) {
+      return div is string && div in ['A', 'B', 'C', 'D', 'E', 'F'];
+    }
+
+    function isValidDay(day) {
+      return day is string && day in ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN'];
+    }
+
+    function isValidTimeStr(t) {
+      return t is string && t.size() == 5 && t.matches('^([01][0-9]|2[0-3]):[0-5][0-9]$');
+    }
+
+    function isValidTimestamp(ts) {
+      return ts is timestamp && ts <= request.time;
+    }
+
+    // 1. User Profiles
+    function isValidUserProfile(data) {
+      return data.userId is string && data.userId.size() >= 1 && data.userId.size() <= 128 &&
+             data.role in ['student', 'teacher'] &&
+             data.displayName is string && data.displayName.size() >= 1 && data.displayName.size() <= 80 &&
+             data.usn is string && data.usn.size() <= 32 &&
+             data.teacherId is string && data.teacherId.size() <= 32 &&
+             (data.division == '' || isValidDivision(data.division)) &&
+             isValidTimestamp(data.createdAt) &&
+             isValidTimestamp(data.updatedAt);
+    }
+
+    match /users/{userId} {
+      allow get: if isSignedIn() && isValidId(userId) && request.auth.uid == userId;
+      allow list: if isSignedIn() && resource.data.userId == request.auth.uid;
+
+      allow create: if isSignedIn() &&
+                       isValidId(userId) &&
+                       request.auth.uid == userId &&
+                       incoming().userId == request.auth.uid &&
+                       incoming().keys().hasAll(['userId', 'role', 'displayName', 'usn', 'teacherId', 'division', 'createdAt', 'updatedAt']) &&
+                       incoming().keys().hasOnly(['userId', 'role', 'displayName', 'usn', 'teacherId', 'division', 'createdAt', 'updatedAt']) &&
+                       isValidUserProfile(incoming());
+
+      allow update: if isSignedIn() &&
+                       isValidId(userId) &&
+                       request.auth.uid == userId &&
+                       isValidUserProfile(incoming()) &&
+                       incoming().userId == existing().userId &&
+                       incoming().createdAt == existing().createdAt &&
+                       incoming().diff(existing()).affectedKeys().hasOnly(['role', 'displayName', 'usn', 'teacherId', 'division', 'updatedAt']);
+
+      allow delete: if isSignedIn() && isValidId(userId) && request.auth.uid == userId;
+    }
+
+    // 2. Students Directory & Live Class Mode Status
+    function isValidStudent(data) {
+      return data.usn is string && data.usn.size() >= 3 && data.usn.size() <= 32 &&
+             data.ownerUid is string && data.ownerUid.size() >= 1 && data.ownerUid.size() <= 128 &&
+             data.name is string && data.name.size() >= 1 && data.name.size() <= 80 &&
+             isValidDivision(data.division) &&
+             data.inClassMode is bool &&
+             data.activeClassId is string && data.activeClassId.size() <= 128 &&
+             data.activeSubject is string && data.activeSubject.size() <= 80 &&
+             data.breakUntilEpochMs is int && data.breakUntilEpochMs >= 0 &&
+             data.watcherUids is list && data.watcherUids.size() >= 1 && data.watcherUids.size() <= 25 &&
+             data.watcherUids[0] is string &&
+             isValidTimestamp(data.lastLogin) &&
+             isValidTimestamp(data.createdAt) &&
+             isValidTimestamp(data.updatedAt);
+    }
+
+    match /students/{usn} {
+      allow get: if isSignedIn() && isValidId(usn) &&
+                    (existing().ownerUid == request.auth.uid || request.auth.uid in existing().watcherUids);
+      allow list: if isSignedIn() &&
+                     (resource.data.ownerUid == request.auth.uid || request.auth.uid in resource.data.watcherUids);
+
+      allow create: if isSignedIn() &&
+                       isValidId(usn) &&
+                       incoming().usn == usn &&
+                       incoming().ownerUid == request.auth.uid &&
+                       request.auth.uid in incoming().watcherUids &&
+                       incoming().keys().hasAll(['usn', 'ownerUid', 'name', 'division', 'inClassMode', 'activeClassId', 'activeSubject', 'breakUntilEpochMs', 'watcherUids', 'lastLogin', 'createdAt', 'updatedAt']) &&
+                       incoming().keys().hasOnly(['usn', 'ownerUid', 'name', 'division', 'inClassMode', 'activeClassId', 'activeSubject', 'breakUntilEpochMs', 'watcherUids', 'lastLogin', 'createdAt', 'updatedAt']) &&
+                       isValidStudent(incoming());
+
+      allow update: if isSignedIn() &&
+                       isValidId(usn) &&
+                       isValidStudent(incoming()) &&
+                       existing().ownerUid == request.auth.uid &&
+                       incoming().ownerUid == existing().ownerUid &&
+                       incoming().usn == existing().usn &&
+                       incoming().createdAt == existing().createdAt &&
+                       request.auth.uid in incoming().watcherUids &&
+                       incoming().diff(existing()).affectedKeys().hasOnly(['name', 'division', 'inClassMode', 'activeClassId', 'activeSubject', 'breakUntilEpochMs', 'watcherUids', 'lastLogin', 'updatedAt']);
+
+      allow delete: if isSignedIn() && isValidId(usn) && existing().ownerUid == request.auth.uid;
+    }
+
+    // 3. Timetable Classes
+    function isValidClass(data) {
+      return data.teacherUid is string && data.teacherUid.size() >= 1 && data.teacherUid.size() <= 128 &&
+             data.teacherId is string && data.teacherId.size() >= 2 && data.teacherId.size() <= 24 &&
+             data.teacherName is string && data.teacherName.size() >= 1 && data.teacherName.size() <= 80 &&
+             data.subject is string && data.subject.size() >= 1 && data.subject.size() <= 80 &&
+             isValidDivision(data.division) &&
+             isValidDay(data.day) &&
+             isValidTimeStr(data.start) &&
+             isValidTimeStr(data.end) &&
+             data.start < data.end &&
+             data.room is string && data.room.size() <= 40 &&
+             data.active is bool &&
+             isValidTimestamp(data.createdAt) &&
+             isValidTimestamp(data.updatedAt);
+    }
+
+    match /classes/{classId} {
+      allow get: if isSignedIn() && isValidId(classId);
+      allow list: if isSignedIn() &&
+                     (resource.data.teacherUid == request.auth.uid || resource.data.active == true);
+
+      allow create: if isSignedIn() &&
+                       isValidId(classId) &&
+                       incoming().teacherUid == request.auth.uid &&
+                       incoming().keys().hasAll(['teacherUid', 'teacherId', 'teacherName', 'subject', 'division', 'day', 'start', 'end', 'room', 'active', 'createdAt', 'updatedAt']) &&
+                       incoming().keys().hasOnly(['teacherUid', 'teacherId', 'teacherName', 'subject', 'division', 'day', 'start', 'end', 'room', 'active', 'createdAt', 'updatedAt']) &&
+                       isValidClass(incoming());
+
+      allow update: if isSignedIn() &&
+                       isValidId(classId) &&
+                       isValidClass(incoming()) &&
+                       existing().teacherUid == request.auth.uid &&
+                       incoming().teacherUid == existing().teacherUid &&
+                       incoming().createdAt == existing().createdAt &&
+                       incoming().diff(existing()).affectedKeys().hasOnly(['teacherId', 'teacherName', 'subject', 'division', 'day', 'start', 'end', 'room', 'active', 'updatedAt']);
+
+      allow delete: if isSignedIn() && isValidId(classId) && existing().teacherUid == request.auth.uid;
+    }
+
+    // 4. Live Class Mode Activity Telemetry
+    function isValidActivity(data) {
+      return data.dateKey is string && data.dateKey.size() == 8 && data.dateKey.matches('^[0-9]{8}$') &&
+             data.classId is string && isValidId(data.classId) &&
+             data.usn is string && data.usn.size() >= 3 && data.usn.size() <= 32 &&
+             data.studentName is string && data.studentName.size() >= 1 && data.studentName.size() <= 80 &&
+             isValidDivision(data.division) &&
+             data.subject is string && data.subject.size() >= 1 && data.subject.size() <= 80 &&
+             data.ownerUid is string && data.ownerUid.size() >= 1 && data.ownerUid.size() <= 128 &&
+             data.teacherUid is string && data.teacherUid.size() >= 1 && data.teacherUid.size() <= 128 &&
+             data.active is bool &&
+             data.breakActive is bool &&
+             isValidTimestamp(data.startedAt) &&
+             isValidTimestamp(data.updatedAt);
+    }
+
+    match /activity/{activityId} {
+      allow get: if isSignedIn() && isValidId(activityId) &&
+                    (existing().ownerUid == request.auth.uid || existing().teacherUid == request.auth.uid);
+      allow list: if isSignedIn() &&
+                     (resource.data.ownerUid == request.auth.uid || resource.data.teacherUid == request.auth.uid);
+
+      allow create: if isSignedIn() &&
+                       isValidId(activityId) &&
+                       incoming().ownerUid == request.auth.uid &&
+                       incoming().keys().hasAll(['dateKey', 'classId', 'usn', 'studentName', 'division', 'subject', 'ownerUid', 'teacherUid', 'active', 'breakActive', 'startedAt', 'updatedAt']) &&
+                       incoming().keys().hasOnly(['dateKey', 'classId', 'usn', 'studentName', 'division', 'subject', 'ownerUid', 'teacherUid', 'active', 'breakActive', 'startedAt', 'updatedAt']) &&
+                       isValidActivity(incoming());
+
+      allow update: if isSignedIn() &&
+                       isValidId(activityId) &&
+                       isValidActivity(incoming()) &&
+                       existing().ownerUid == request.auth.uid &&
+                       incoming().ownerUid == existing().ownerUid &&
+                       incoming().dateKey == existing().dateKey &&
+                       incoming().classId == existing().classId &&
+                       incoming().usn == existing().usn &&
+                       incoming().startedAt == existing().startedAt &&
+                       incoming().diff(existing()).affectedKeys().hasOnly(['studentName', 'division', 'subject', 'teacherUid', 'active', 'breakActive', 'updatedAt']);
+
+      allow delete: if isSignedIn() && isValidId(activityId) && existing().ownerUid == request.auth.uid;
+    }
+
+    // 5. Break Requests
+    function isValidBreakRequest(data) {
+      return data.ownerUid is string && data.ownerUid.size() >= 1 && data.ownerUid.size() <= 128 &&
+             data.usn is string && data.usn.size() >= 3 && data.usn.size() <= 32 &&
+             data.studentName is string && data.studentName.size() >= 1 && data.studentName.size() <= 80 &&
+             isValidDivision(data.division) &&
+             data.classId is string && isValidId(data.classId) &&
+             data.subject is string && data.subject.size() >= 1 && data.subject.size() <= 80 &&
+             data.teacherUid is string && data.teacherUid.size() >= 1 && data.teacherUid.size() <= 128 &&
+             data.reason is string && data.reason.size() >= 1 && data.reason.size() <= 200 &&
+             data.status in ['PENDING', 'APPROVED', 'DENIED'] &&
+             data.breakCode is string && data.breakCode.size() <= 8 &&
+             data.durationMinutes is int && data.durationMinutes >= 1 && data.durationMinutes <= 30 &&
+             isValidTimestamp(data.createdAt) &&
+             isValidTimestamp(data.updatedAt);
+    }
+
+    match /breakRequests/{requestId} {
+      allow get: if isSignedIn() && isValidId(requestId) &&
+                    (existing().ownerUid == request.auth.uid || existing().teacherUid == request.auth.uid);
+      allow list: if isSignedIn() &&
+                     (resource.data.ownerUid == request.auth.uid || resource.data.teacherUid == request.auth.uid);
+
+      allow create: if isSignedIn() &&
+                       isValidId(requestId) &&
+                       incoming().ownerUid == request.auth.uid &&
+                       incoming().status == 'PENDING' &&
+                       incoming().breakCode == '' &&
+                       incoming().keys().hasAll(['ownerUid', 'usn', 'studentName', 'division', 'classId', 'subject', 'teacherUid', 'reason', 'status', 'breakCode', 'durationMinutes', 'createdAt', 'updatedAt']) &&
+                       incoming().keys().hasOnly(['ownerUid', 'usn', 'studentName', 'division', 'classId', 'subject', 'teacherUid', 'reason', 'status', 'breakCode', 'durationMinutes', 'createdAt', 'updatedAt']) &&
+                       isValidBreakRequest(incoming());
+
+      allow update: if isSignedIn() &&
+                       isValidId(requestId) &&
+                       isValidBreakRequest(incoming()) &&
+                       existing().teacherUid == request.auth.uid &&
+                       existing().status == 'PENDING' &&
+                       incoming().status in ['APPROVED', 'DENIED'] &&
+                       (incoming().status != 'APPROVED' || (incoming().breakCode.size() == 4 && incoming().breakCode.matches('^[0-9]{4}$'))) &&
+                       incoming().ownerUid == existing().ownerUid &&
+                       incoming().teacherUid == existing().teacherUid &&
+                       incoming().createdAt == existing().createdAt &&
+                       incoming().diff(existing()).affectedKeys().hasOnly(['status', 'breakCode', 'updatedAt']);
+
+      allow delete: if isSignedIn() && isValidId(requestId) && existing().ownerUid == request.auth.uid;
+    }
+  }
+}

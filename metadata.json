@@ -1,0 +1,6 @@
+{
+  "name": "FocusGuard",
+  "description": "College lecture focus system with StudyShield student Class Mode, TeacherFocus timetable and live monitoring, and Firebase Firestore sync.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
