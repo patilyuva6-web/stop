@@ -116,6 +116,11 @@ fun StudyShieldStudentApp() {
             studentName = session.name,
             division = session.division,
             repository = repository,
+            webClientId = webClientId,
+            isFirestoreConnected = currentUser != null,
+            onGoogleAuthSuccess = {
+                currentUser = Firebase.auth.currentUser
+            },
             onSignOutStudent = {
                 FocusMonitorService.stop(context)
                 loggedUsn = null

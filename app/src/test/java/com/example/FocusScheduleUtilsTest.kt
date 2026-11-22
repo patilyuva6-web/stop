@@ -95,4 +95,37 @@ class FocusScheduleUtilsTest {
         assertFalse(FocusScheduleUtils.isClassActiveNow(cls, day = "MON", timeHHmm = "10:00"))
         assertFalse(FocusScheduleUtils.isClassActiveNow(cls, day = "TUE", timeHHmm = "09:30"))
     }
+
+    @Test
+    fun sortUpcomingLecturesOrdersLiveThenTodayThenFutureDays() {
+        val finished = ClassSchedule(id = "past", day = "MON", start = "08:00", end = "09:00", active = true)
+        val live = ClassSchedule(id = "live", day = "MON", start = "09:30", end = "10:30", active = true)
+        val laterToday = ClassSchedule(id = "today", day = "MON", start = "14:00", end = "15:00", active = true)
+        val tomorrow = ClassSchedule(id = "tue", day = "TUE", start = "09:00", end = "10:00", active = true)
+        val sunday = ClassSchedule(id = "sun", day = "SUN", start = "10:00", end = "11:00", active = true)
+
+        val upcomingOnly = FocusScheduleUtils.sortUpcomingLectures(
+            classes = listOf(sunday, finished, laterToday, tomorrow, live),
+            todayDay = "MON",
+            timeHHmm = "09:45",
+            includeFinishedToday = false
+        )
+        assertEquals(listOf("live", "today", "tue", "sun"), upcomingOnly.map { it.id })
+
+        val withPast = FocusScheduleUtils.sortUpcomingLectures(
+            classes = listOf(sunday, finished, laterToday, tomorrow, live),
+            todayDay = "MON",
+            timeHHmm = "09:45",
+            includeFinishedToday = true
+        )
+        assertEquals(listOf("live", "today", "tue", "sun", "past"), withPast.map { it.id })
+        assertEquals(
+            "Starts in 4h 15m",
+            FocusScheduleUtils.relativeStartLabel(laterToday, todayDay = "MON", timeHHmm = "09:45")
+        )
+        assertEquals(
+            "Tomorrow • 09:00",
+            FocusScheduleUtils.relativeStartLabel(tomorrow, todayDay = "MON", timeHHmm = "09:45")
+        )
+    }
 }

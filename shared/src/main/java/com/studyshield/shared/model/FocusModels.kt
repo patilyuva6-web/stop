@@ -268,4 +268,95 @@ object FocusScheduleUtils {
         val code = (abs(hash) % 9000) + 1000
         return code.toString()
     }
+
+    fun dayOffsetFromToday(
+        targetDay: String,
+        todayDay: String = currentDayCode()
+    ): Int {
+        val todayIdx = DAYS.indexOf(normalizeDay(todayDay))
+        val targetIdx = DAYS.indexOf(normalizeDay(targetDay))
+        if (todayIdx < 0 || targetIdx < 0) return 7
+        return (targetIdx - todayIdx + 7) % 7
+    }
+
+    fun lecturePhase(
+        schedule: ClassSchedule,
+        todayDay: String = currentDayCode(),
+        timeHHmm: String = currentTimeHHmm()
+    ): LecturePhase {
+        if (isClassActiveNow(schedule, todayDay, timeHHmm)) {
+            return LecturePhase.LIVE_NOW
+        }
+        val normToday = normalizeDay(todayDay)
+        val normTarget = normalizeDay(schedule.day)
+        if (normTarget == normToday) {
+            val nowMins = parseMinutes(timeHHmm) ?: return LecturePhase.UPCOMING_TODAY
+            val startMins = parseMinutes(normalizeTime(schedule.start)) ?: return LecturePhase.UPCOMING_TODAY
+            return if (nowMins < startMins) LecturePhase.UPCOMING_TODAY else LecturePhase.FINISHED_TODAY
+        }
+        return LecturePhase.UPCOMING_LATER
+    }
+
+    fun sortUpcomingLectures(
+        classes: List<ClassSchedule>,
+        todayDay: String = currentDayCode(),
+        timeHHmm: String = currentTimeHHmm(),
+        includeFinishedToday: Boolean = false
+    ): List<ClassSchedule> {
+        return classes
+            .filter { it.active }
+            .filter { includeFinishedToday || lecturePhase(it, todayDay, timeHHmm) != LecturePhase.FINISHED_TODAY }
+            .sortedWith(
+                compareBy<ClassSchedule> {
+                    when (lecturePhase(it, todayDay, timeHHmm)) {
+                        LecturePhase.LIVE_NOW -> 0
+                        LecturePhase.UPCOMING_TODAY -> 1
+                        LecturePhase.UPCOMING_LATER -> 2
+                        LecturePhase.FINISHED_TODAY -> 3
+                    }
+                }
+                    .thenBy { dayOffsetFromToday(it.day, todayDay) }
+                    .thenBy { parseMinutes(normalizeTime(it.start)) ?: Int.MAX_VALUE }
+            )
+    }
+
+    fun relativeStartLabel(
+        schedule: ClassSchedule,
+        todayDay: String = currentDayCode(),
+        timeHHmm: String = currentTimeHHmm()
+    ): String {
+        return when (lecturePhase(schedule, todayDay, timeHHmm)) {
+            LecturePhase.LIVE_NOW -> "Live now • Ends ${normalizeTime(schedule.end)}"
+            LecturePhase.UPCOMING_TODAY -> {
+                val nowMins = parseMinutes(timeHHmm)
+                val startMins = parseMinutes(normalizeTime(schedule.start))
+                if (nowMins != null && startMins != null) {
+                    val diff = (startMins - nowMins).coerceAtLeast(0)
+                    when {
+                        diff < 60 -> "Starts in ${diff}m"
+                        else -> {
+                            val h = diff / 60
+                            val m = diff % 60
+                            if (m == 0) "Starts in ${h}h" else "Starts in ${h}h ${m}m"
+                        }
+                    }
+                } else {
+                    "Today • ${normalizeTime(schedule.start)}"
+                }
+            }
+            LecturePhase.UPCOMING_LATER -> {
+                val offset = dayOffsetFromToday(schedule.day, todayDay)
+                val dayPrefix = if (offset == 1) "Tomorrow" else normalizeDay(schedule.day)
+                "$dayPrefix • ${normalizeTime(schedule.start)}"
+            }
+            LecturePhase.FINISHED_TODAY -> "Completed today"
+        }
+    }
+}
+
+enum class LecturePhase {
+    LIVE_NOW,
+    UPCOMING_TODAY,
+    UPCOMING_LATER,
+    FINISHED_TODAY
 }

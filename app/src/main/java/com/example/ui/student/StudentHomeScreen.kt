@@ -32,6 +32,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.Logout
 import androidx.compose.material.icons.rounded.AccessTime
+import androidx.compose.material.icons.rounded.CalendarMonth
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.Coffee
 import androidx.compose.material.icons.rounded.Info
@@ -48,12 +49,13 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
@@ -69,6 +71,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -100,6 +103,11 @@ import com.studyshield.shared.theme.JetBrainsMonoFontFamily
 import com.studyshield.shared.theme.Slate800
 import com.studyshield.shared.ui.SystemLimitsSheet
 
+private enum class StudentTab {
+    FOCUS,
+    LECTURES
+}
+
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun StudentHomeScreen(
@@ -108,6 +116,9 @@ fun StudentHomeScreen(
     studentName: String,
     division: String,
     repository: FocusGuardRepository,
+    webClientId: String,
+    isFirestoreConnected: Boolean,
+    onGoogleAuthSuccess: () -> Unit,
     onSignOutStudent: () -> Unit
 ) {
     val viewModel: StudentViewModel = viewModel(
@@ -135,6 +146,7 @@ fun StudentHomeScreen(
     var breakCodeInput by remember { mutableStateOf("") }
     var breakReasonInput by remember { mutableStateOf("") }
     var showLimitsSheet by remember { mutableStateOf(false) }
+    var selectedTab by rememberSaveable { mutableStateOf(StudentTab.FOCUS) }
 
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
@@ -169,7 +181,11 @@ fun StudentHomeScreen(
     }
 
     BackHandler {
-        onSignOutStudent()
+        if (selectedTab != StudentTab.FOCUS) {
+            selectedTab = StudentTab.FOCUS
+        } else {
+            onSignOutStudent()
+        }
     }
 
     Scaffold(
@@ -206,8 +222,39 @@ fun StudentHomeScreen(
                     containerColor = MaterialTheme.colorScheme.background
                 )
             )
+        },
+        bottomBar = {
+            NavigationBar {
+                NavigationBarItem(
+                    selected = selectedTab == StudentTab.FOCUS,
+                    onClick = { selectedTab = StudentTab.FOCUS },
+                    icon = { Icon(Icons.Rounded.Shield, contentDescription = null) },
+                    label = { Text("Focus") },
+                    modifier = Modifier.testTag("student_tab_focus")
+                )
+                NavigationBarItem(
+                    selected = selectedTab == StudentTab.LECTURES,
+                    onClick = { selectedTab = StudentTab.LECTURES },
+                    icon = { Icon(Icons.Rounded.CalendarMonth, contentDescription = null) },
+                    label = { Text("Lectures") },
+                    modifier = Modifier.testTag("student_tab_lectures")
+                )
+            }
         }
     ) { innerPadding ->
+        when (selectedTab) {
+            StudentTab.LECTURES -> {
+                UpcomingLecturesScreen(
+                    division = division,
+                    classesState = classesState,
+                    isFirestoreConnected = isFirestoreConnected,
+                    webClientId = webClientId,
+                    onGoogleAuthSuccess = onGoogleAuthSuccess,
+                    modifier = Modifier.padding(innerPadding)
+                )
+            }
+
+            StudentTab.FOCUS -> {
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -294,79 +341,16 @@ fun StudentHomeScreen(
                 }
 
                 item {
-                    Text(
-                        text = "Division $division Timetable (${FocusScheduleUtils.currentDayCode()})",
-                        style = MaterialTheme.typography.titleLarge,
-                        modifier = Modifier.padding(top = 4.dp)
+                    NextLecturePreviewCard(
+                        division = division,
+                        classesState = classesState,
+                        onOpenLectures = { selectedTab = StudentTab.LECTURES }
                     )
                 }
 
-                when (val state = classesState) {
-                    UiState.Loading -> {
-                        item {
-                            Box(
-                                modifier = Modifier.fillMaxWidth().padding(24.dp),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                CircularProgressIndicator()
-                            }
-                        }
-                    }
-                    is UiState.Error -> {
-                        item {
-                            Surface(
-                                shape = RoundedCornerShape(14.dp),
-                                color = MaterialTheme.colorScheme.errorContainer,
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Text(
-                                    text = state.message,
-                                    color = MaterialTheme.colorScheme.onErrorContainer,
-                                    modifier = Modifier.padding(14.dp)
-                                )
-                            }
-                        }
-                    }
-                    is UiState.Success -> {
-                        if (state.data.isEmpty()) {
-                            item {
-                                Card(
-                                    shape = RoundedCornerShape(18.dp),
-                                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                                    modifier = Modifier.fillMaxWidth()
-                                ) {
-                                    Column(
-                                        modifier = Modifier.padding(20.dp),
-                                        horizontalAlignment = Alignment.CenterHorizontally,
-                                        verticalArrangement = Arrangement.spacedBy(6.dp)
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Rounded.Schedule,
-                                            contentDescription = null,
-                                            tint = MaterialTheme.colorScheme.primary,
-                                            modifier = Modifier.size(32.dp)
-                                        )
-                                        Text(
-                                            text = "No scheduled classes for Division $division yet",
-                                            style = MaterialTheme.typography.titleMedium
-                                        )
-                                        Text(
-                                            text = "Classes added by your teacher in TeacherFocus will automatically activate Class Mode here.",
-                                            style = MaterialTheme.typography.bodyMedium,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                    }
-                                }
-                            }
-                        } else {
-                            items(state.data, key = { it.id }) { schedule ->
-                                TimetableSlotCard(schedule = schedule)
-                            }
-                        }
-                    }
-                }
-
                 item { Spacer(modifier = Modifier.height(16.dp)) }
+            }
+        }
             }
         }
     }
@@ -796,64 +780,102 @@ private fun BreakPassCard(
 }
 
 @Composable
-private fun TimetableSlotCard(schedule: ClassSchedule) {
-    val activeNow = FocusScheduleUtils.isClassActiveNow(schedule)
+private fun NextLecturePreviewCard(
+    division: String,
+    classesState: UiState<List<ClassSchedule>>,
+    onOpenLectures: () -> Unit
+) {
+    val upcoming = remember(classesState) {
+        val raw = (classesState as? UiState.Success)?.data.orEmpty()
+        FocusScheduleUtils.sortUpcomingLectures(raw)
+    }
+    val nextLecture = upcoming.firstOrNull()
+
     Card(
-        shape = RoundedCornerShape(18.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = if (activeNow) {
-                MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.45f)
-            } else {
-                MaterialTheme.colorScheme.surface
-            }
-        ),
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         modifier = Modifier.fillMaxWidth()
     ) {
-        Row(
-            modifier = Modifier.padding(16.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
+        Column(
+            modifier = Modifier.padding(18.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            Column(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(4.dp)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Text(
-                        text = "${schedule.day} ${schedule.start}–${schedule.end}",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.primary
+                    Icon(
+                        imageVector = Icons.Rounded.Schedule,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary
                     )
-                    if (activeNow) {
-                        Surface(
-                            shape = RoundedCornerShape(50),
-                            color = EmeraldFocus
+                    Text(
+                        text = "Next Up • Div $division",
+                        style = MaterialTheme.typography.titleLarge
+                    )
+                }
+                TextButton(
+                    onClick = onOpenLectures,
+                    modifier = Modifier.testTag("open_upcoming_lectures_button")
+                ) {
+                    Text("All Lectures (${upcoming.size})")
+                }
+            }
+
+            if (nextLecture != null) {
+                val activeNow = FocusScheduleUtils.isClassActiveNow(nextLecture)
+                Surface(
+                    shape = RoundedCornerShape(14.dp),
+                    color = if (activeNow) {
+                        MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.5f)
+                    } else {
+                        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f)
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier.padding(14.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(
+                            modifier = Modifier.weight(1f),
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
                         ) {
                             Text(
-                                text = "LIVE NOW",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = Color.White,
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                                text = FocusScheduleUtils.relativeStartLabel(nextLecture),
+                                style = MaterialTheme.typography.labelMedium,
+                                color = if (activeNow) EmeraldFocus else MaterialTheme.colorScheme.primary
+                            )
+                            Text(
+                                text = nextLecture.subject,
+                                style = MaterialTheme.typography.titleMedium
+                            )
+                            Text(
+                                text = "${nextLecture.day} ${nextLecture.start}–${nextLecture.end} • ${nextLecture.teacherName.ifBlank { nextLecture.teacherId }}",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        if (activeNow) {
+                            Icon(
+                                imageVector = Icons.Rounded.NotificationsActive,
+                                contentDescription = "Active lecture",
+                                tint = EmeraldFocus
                             )
                         }
                     }
                 }
-                Text(text = schedule.subject, style = MaterialTheme.typography.titleMedium)
+            } else {
                 Text(
-                    text = "${schedule.teacherName} (${schedule.teacherId})" +
-                        if (schedule.room.isNotBlank()) " • ${schedule.room}" else "",
+                    text = "No upcoming lectures queued right now. Tap All Lectures to view your division schedule or sync Firestore.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-            if (activeNow) {
-                Icon(
-                    imageVector = Icons.Rounded.NotificationsActive,
-                    contentDescription = "Active lecture",
-                    tint = EmeraldFocus
                 )
             }
         }

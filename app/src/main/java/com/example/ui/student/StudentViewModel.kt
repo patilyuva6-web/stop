@@ -204,10 +204,10 @@ class StudentViewModel(
             }
 
             _runtime.value = _runtime.value.copy(
-                syncStatusMessage = if (stuRes.isSuccess) {
-                    "Synced to students/$usn" + if (activeClassId.isNotBlank()) " & activity/" else ""
+                syncStatusMessage = if (currentUserId != "rtdb_session" && stuRes.isSuccess) {
+                    "Firestore synced ($usn)" + if (activeClassId.isNotBlank()) " • live activity" else ""
                 } else {
-                    "Synced with blck-43179 RTDB"
+                    "Demo session active • Optional Google sync for Firestore"
                 }
             )
         }
